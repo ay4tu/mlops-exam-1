@@ -44,7 +44,38 @@ By the end of this session: the full ModelServe stack (FastAPI, MLflow, Feast, R
 
 ### Cleanup
 - [ ] `pulumi destroy --yes` removes all resources cleanly
-- [ ] All changes pushed to GitHub
+
+---
+
+## Manual flow test — run this yourself
+
+```bash
+# Replace <ip> with your Elastic IP from: pulumi stack output instance_ip
+
+# 1. Health check from your local machine
+curl http://<ip>:8000/health
+
+# 2. Prediction from your local machine
+curl -X POST http://<ip>:8000/predict \
+  -H "Content-Type: application/json" \
+  -d @training/sample_request.json
+
+# 3. MLflow UI
+open http://<ip>:5000
+
+# 4. Grafana dashboard
+open http://<ip>:3000
+
+# 5. Prometheus targets
+open http://<ip>:9090/targets
+```
+
+All pass? → **Commit and push:**
+```bash
+git add infrastructure/ docker-compose.yml scripts/
+git commit -m "feat: full stack deployed to EC2 via Pulumi"
+git push
+```
 
 ---
 

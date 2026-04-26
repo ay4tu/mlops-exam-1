@@ -36,7 +36,43 @@ By the end of this session: the FastAPI service has a production-grade multi-sta
 - [ ] `docker compose up` still starts all services cleanly using the new image
 - [ ] `curl http://localhost:8000/health` still returns 200
 - [ ] `curl -X POST http://localhost:8000/predict -d @training/sample_request.json` still returns valid prediction
-- [ ] All changes pushed to GitHub
+
+---
+
+## Manual flow test — run this yourself
+
+```bash
+# 1. Check image size
+docker build -t modelserve-api .
+docker image ls modelserve-api
+
+# 2. Confirm non-root user
+docker run --rm modelserve-api whoami
+
+# 3. Full stack still works
+docker compose up -d
+curl http://localhost:8000/health
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d @training/sample_request.json
+```
+
+All pass? → **Commit and push:**
+```bash
+git add Dockerfile
+git commit -m "feat: multi-stage Dockerfile with non-root user and healthcheck"
+git push
+```
+
+---
+
+## Capture decisions now (feeds ADR-4)
+
+Before finishing this session, jot these down in `docs/ARCHITECTURE.md`:
+
+- [ ] Which base image did you choose for the runtime stage and why?
+- [ ] What did the multi-stage build actually cut from the final image (size before vs after)?
+- [ ] Any trade-offs you accepted (e.g. Alpine vs slim, specific Python version)?
 
 ---
 

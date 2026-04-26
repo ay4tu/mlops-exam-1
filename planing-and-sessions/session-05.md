@@ -50,7 +50,35 @@ By the end of this session: `pulumi up` provisions a VPC, public subnet, securit
 - [ ] ECR repository visible in AWS console
 - [ ] SSH to EC2 instance succeeds
 - [ ] `pulumi destroy --yes` cleanly removes all resources (no orphaned resources)
-- [ ] All changes pushed to GitHub
+
+---
+
+## Manual flow test — run this yourself
+
+```bash
+# 1. Provision infrastructure
+cd infrastructure && pulumi up --yes
+
+# 2. Check stack outputs
+pulumi stack output
+
+# 3. SSH into EC2
+ssh -i <key> ec2-user@$(pulumi stack output instance_ip)
+
+# 4. Verify resources tagged in AWS console
+aws ec2 describe-instances --filters "Name=tag:Project,Values=modelserve" \
+  --query 'Reservations[].Instances[].InstanceId'
+
+# 5. Destroy cleanly
+pulumi destroy --yes
+```
+
+All pass? → **Commit and push:**
+```bash
+git add infrastructure/
+git commit -m "feat: Pulumi VPC, EC2, S3, ECR infrastructure"
+git push
+```
 
 ---
 

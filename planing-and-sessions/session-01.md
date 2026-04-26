@@ -28,7 +28,41 @@ By the end of this session: a trained fraud-detection model is registered in MLf
 - [ ] `training/sample_request.json` exported with a valid `cc_num` value
 - [ ] Second run of `train.py` registers a new version with comparable metrics (reproducibility)
 - [ ] ROC-AUC ≥ 0.85 on test split
-- [ ] All changes pushed to GitHub
+
+---
+
+## Manual flow test — run this yourself
+
+```bash
+# 1. MLflow UI shows the model
+open http://localhost:5000
+
+# 2. Model is in Production stage (check in UI under Models > fraud-detector)
+
+# 3. Exported files exist
+ls -lh training/features.parquet training/sample_request.json
+
+# 4. sample_request.json contains a valid cc_num
+cat training/sample_request.json
+```
+
+All pass? → **Commit and push:**
+```bash
+git add training/features.parquet training/sample_request.json training/train.py
+git commit -m "feat: train fraud-detector model and export features"
+git push
+```
+
+---
+
+## Capture decisions now (feeds ADR-3)
+
+Before finishing this session, jot these down in `docs/ARCHITECTURE.md` while they're fresh:
+
+- [ ] Which model algorithm did you choose and why? (RandomForest / XGBoost / LightGBM)
+- [ ] Which features did you include and which did you drop, and why?
+- [ ] Why Postgres as the MLflow backend store?
+- [ ] Why S3 for the artifact store (vs local volume in production)?
 
 ---
 

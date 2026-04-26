@@ -45,7 +45,42 @@ By the end of this session: a push to `main` triggers a complete test → build 
 - [ ] Pipeline runs end-to-end without manual intervention between runs
 - [ ] Create a version tag (`git tag v1.0.0 && git push --tags`) → verify `build-and-push` + `deploy` trigger
 - [ ] Open a test PR → verify `pulumi-preview` posts a comment with the infrastructure diff
-- [ ] All changes pushed to GitHub
+---
+
+## Manual flow test — run this yourself
+
+```bash
+# 1. Trigger full pipeline
+git push origin main
+open https://github.com/<your-repo>/actions
+
+# 2. Watch all jobs pass: test → build-and-push → trivy-scan → deploy
+
+# 3. After deploy job completes, verify live service
+IP=<your-elastic-ip>
+curl http://$IP:8000/health
+curl -X POST http://$IP:8000/predict \
+  -H "Content-Type: application/json" \
+  -d @training/sample_request.json
+
+# 4. Test tag-based trigger
+git tag v1.0.0 && git push --tags
+
+# 5. Open a test PR and check pulumi-preview comment appears
+```
+
+All pass? → the pipeline push IS the commit. Confirm green checkmark on GitHub.
+
+---
+
+## Capture decisions now (feeds ADR-2)
+
+Before finishing this session, jot these down in `docs/ARCHITECTURE.md`:
+
+- [ ] Why incremental `pulumi up` instead of destroy-and-recreate? When would you switch?
+- [ ] Why hybrid trigger (push to main + tags) instead of tags-only?
+- [ ] How does the pipeline handle a failed deploy — what's the recovery path?
+- [ ] Expected end-to-end deploy time (test → build → deploy → health check)?
 
 ---
 

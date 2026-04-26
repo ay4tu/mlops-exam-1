@@ -47,7 +47,52 @@ By the end of this session: Prometheus scrapes FastAPI metrics, Grafana loads a 
 - [ ] Send 20+ requests to `/predict` and verify all dashboard panels update live
 - [ ] Kill the FastAPI container — verify the service-down alert fires within expected time
 - [ ] Restart FastAPI — verify alert clears
-- [ ] All changes pushed to GitHub
+
+---
+
+## Manual flow test — run this yourself
+
+```bash
+# 1. Fresh stack up
+docker compose down && docker compose up -d
+
+# 2. Prometheus shows FastAPI as UP
+open http://localhost:9090/targets
+
+# 3. Three alert rules visible
+open http://localhost:9090/alerts
+
+# 4. Send 20 requests to populate Grafana
+for i in $(seq 1 20); do
+  curl -s -X POST http://localhost:8000/predict \
+    -H "Content-Type: application/json" \
+    -d @training/sample_request.json > /dev/null
+done
+
+# 5. Open Grafana — dashboard loads automatically, panels show data
+open http://localhost:3000
+
+# 6. Kill FastAPI and watch alert fire (check Prometheus alerts page after ~1 min)
+docker compose stop fastapi
+```
+
+All pass? → **Commit and push:**
+```bash
+git add monitoring/ docker-compose.yml
+git commit -m "feat: Prometheus scraping, Grafana dashboard, alert rules"
+git push
+```
+
+---
+
+## Capture decisions now (feeds ADR-5)
+
+Before finishing this session, jot these down in `docs/ARCHITECTURE.md`:
+
+- [ ] What are your alert thresholds (latency, error rate) and how did you pick them?
+- [ ] What does the dashboard prioritise and why (what's most useful to show first)?
+- [ ] What is intentionally NOT on the dashboard that a real system would need?
+- [ ] Why provision Grafana from files rather than manual setup?
 
 ---
 
