@@ -8,3 +8,8 @@
 #   - IDE and OS files
 #   - Docker build artifacts
 #   - Test coverage reports
+
+metarials/
+.env
+.venv
+data/
