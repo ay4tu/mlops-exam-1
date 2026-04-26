@@ -1,24 +1,57 @@
-# ============================================================================
-# ModelServe — Docker Compose (Local Development)
-# ============================================================================
-# TODO: Define your complete local development stack.
-#
-# Required services:
-#   - PostgreSQL (MLflow backend store)
-#   - Redis (Feast online store)
-#   - MLflow Tracking Server (depends on Postgres)
-#   - FastAPI Inference Service (depends on MLflow, Redis)
-#   - Prometheus (scrapes FastAPI /metrics) — add in Sessions 3-4
-#   - Grafana (reads from Prometheus) — add in Sessions 3-4
-#
-# For each service, consider:
-#   - Which Docker image to use
-#   - What ports to expose
-#   - What environment variables to pass
-#   - What volumes to mount for persistence
-#   - What healthcheck to configure
-#   - What depends_on relationships exist
-#   - What network to attach to
-#
-# The entire stack must start with a single: docker compose up
-# ============================================================================
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mlflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mlflow}
+      POSTGRES_DB: ${POSTGRES_DB:-mlflow}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "mlflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mlflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mlflow}
+      POSTGRES_DB: ${POSTGRES_DB:-mlflow}
+    command:
+      - bash
+      - -c
+      - |
+        pip install psycopg2-binary -q
+        exec mlflow server \
+          --backend-store-uri "postgresql+psycopg2://$$POSTGRES_USER:$$POSTGRES_PASSWORD@postgres:5432/$$POSTGRES_DB" \
+          --artifacts-destination /mlruns \
+          --default-artifact-root mlflow-artifacts:/ \
+          --serve-artifacts \
+          --host 0.0.0.0 \
+          --port 5000 \
+          --disable-security-middleware
+    ports:
+      - "5001:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - mlruns:/mlruns
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  postgres_data:
+  mlruns:
