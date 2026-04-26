@@ -42,7 +42,53 @@ By the end of this session: `docker compose up` starts the full local stack (Pos
 - [ ] Model loaded once on startup (not per request) — visible in startup logs
 - [ ] Unknown `entity_id` returns structured JSON error + increments `prediction_errors_total`
 - [ ] All request/response shapes use Pydantic models
-- [ ] All changes pushed to GitHub
+
+---
+
+## Manual flow test — run this yourself
+
+```bash
+# 1. Full stack up
+docker compose up -d
+docker compose ps   # all services should show healthy
+
+# 2. Health check
+curl http://localhost:8000/health
+
+# 3. Prediction (replace cc_num with value from sample_request.json)
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d @training/sample_request.json
+
+# 4. Explain endpoint
+curl "http://localhost:8000/predict/$(cat training/sample_request.json | python3 -c 'import sys,json; print(json.load(sys.stdin)["entity_id"])')?explain=true"
+
+# 5. Metrics
+curl http://localhost:8000/metrics | grep prediction_requests_total
+
+# 6. Unknown entity returns error (not 500)
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"entity_id": 9999999999}'
+```
+
+All pass? → **Commit and push:**
+```bash
+git add app/ feast_repo/ docker-compose.yml
+git commit -m "feat: local stack with Feast, FastAPI endpoints"
+git push
+```
+
+---
+
+## Capture decisions now (feeds ADR-3)
+
+Before finishing this session, jot these down in `docs/ARCHITECTURE.md`:
+
+- [ ] Why Redis for the Feast online store (vs alternatives)?
+- [ ] Why local Parquet for the offline store (vs S3 in dev)?
+- [ ] Any Feast entity/feature view decisions that weren't obvious — note the reasoning
+- [ ] Any Docker Compose service ordering or networking decisions worth explaining
 
 ---
 

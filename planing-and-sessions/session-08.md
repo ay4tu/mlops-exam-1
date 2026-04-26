@@ -47,7 +47,23 @@ By the end of this session: the `test` and `build-and-push` jobs are working in 
 ### Verification
 - [ ] Push to `main` → `test` job → `build-and-push` job both pass in GitHub Actions UI
 - [ ] ECR repository shows the newly pushed image
-- [ ] All changes pushed to GitHub
+
+---
+
+## Manual flow test — run this yourself
+
+```bash
+# 1. Push to main and watch Actions
+git push origin main
+open https://github.com/<your-repo>/actions
+
+# 2. Confirm test job passes (green)
+# 3. Confirm build-and-push job passes (green)
+# 4. Check ECR has the new image
+aws ecr list-images --repository-name modelserve-api
+```
+
+All pass? → the push itself IS the commit. Verify the green checkmark on GitHub.
 
 ---
 

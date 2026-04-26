@@ -40,7 +40,33 @@ By the end of this session: the full cloud deployment is verified end-to-end wit
 - [ ] ADR-3: Data architecture (Postgres for MLflow, Redis for Feast, S3 for artifacts) — drafted
 - [ ] ADR-4: Containerisation (base image, multi-stage, image size) — drafted
 - [ ] ADR-5: Monitoring design (alert thresholds, dashboard choices, gaps) — drafted
-- [ ] All changes pushed to GitHub
+---
+
+## Manual flow test — run this yourself
+
+```bash
+# 1. Cold-start: destroy then reprovision
+cd infrastructure && pulumi destroy --yes && pulumi up --yes
+
+# 2. Hit all endpoints on EC2
+IP=$(pulumi stack output instance_ip)
+curl http://$IP:8000/health
+curl -X POST http://$IP:8000/predict \
+  -H "Content-Type: application/json" \
+  -d @training/sample_request.json
+curl http://$IP:9090/targets  # Prometheus
+open http://$IP:3000          # Grafana
+
+# 3. Clean up
+pulumi destroy --yes
+```
+
+All pass? → **Commit and push:**
+```bash
+git add docs/
+git commit -m "docs: architecture diagram and initial ADR drafts"
+git push
+```
 
 ---
 

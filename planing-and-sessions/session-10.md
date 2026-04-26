@@ -78,6 +78,49 @@ By the end of this session: the repository is in final submission state — `ARC
 
 ---
 
+## Manual flow test — run this yourself (full submission check)
+
+```bash
+IP=<your-elastic-ip>
+
+# 1. All TA validation checks from exam spec
+curl http://$IP:8000/health
+curl -X POST http://$IP:8000/predict \
+  -H "Content-Type: application/json" \
+  -d @training/sample_request.json
+curl http://$IP:8000/metrics | grep prediction_requests_total
+
+# 2. Rollback endpoint
+curl http://$IP:8000/rollback
+curl http://$IP:8000/health   # model_version should have changed
+
+# 3. Burst test — check Grafana updates live
+for i in $(seq 1 50); do
+  curl -s -X POST http://$IP:8000/predict \
+    -H "Content-Type: application/json" \
+    -d @training/sample_request.json > /dev/null
+done
+open http://$IP:3000   # watch panels update
+
+# 4. Kill FastAPI — watch Prometheus alert fire
+# 5. Restart — watch alert clear
+
+# 6. Verify AWS tags
+aws ec2 describe-instances \
+  --filters "Name=tag:Project,Values=modelserve" \
+  --query 'Reservations[].Instances[].InstanceId'
+```
+
+All pass? → **Final commit and push:**
+```bash
+git add docs/ README.md app/main.py
+git commit -m "docs: complete ARCHITECTURE.md, runbook, ADRs, rollback endpoint"
+git push
+# Then: pulumi destroy --yes
+```
+
+---
+
 ## TA Demo Script (quick reference)
 
 | Minute | Action |
