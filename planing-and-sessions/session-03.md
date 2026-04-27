@@ -3,7 +3,7 @@
 > Phase: **Phase 3 — Containerisation & Observability** (part 1)
 > Plan ref: `plans/modelserve-plan.md#phase-3`
 
-**Status:** `[ ] Not Started`
+**Status:** `[x] Complete`
 
 **Prerequisite:** Session 02 complete ✓
 
@@ -18,38 +18,39 @@ By the end of this session: the FastAPI service has a production-grade multi-sta
 ## Checklist
 
 ### Dockerfile
-- [ ] `Dockerfile` uses multi-stage build (at least: builder stage + runtime stage)
-- [ ] Builder stage installs dependencies and compiles any native packages
-- [ ] Runtime stage uses a minimal base image (e.g. `python:3.11-slim`)
-- [ ] Runtime stage copies only what is needed from the builder (no pip cache, no build tools)
-- [ ] Container runs as a non-root user — `USER` directive in Dockerfile
-- [ ] `HEALTHCHECK` directive present in Dockerfile
-- [ ] `EXPOSE` directive declares the correct port
+- [x] `Dockerfile` uses multi-stage build (at least: builder stage + runtime stage)
+- [x] Builder stage installs dependencies and compiles any native packages
+- [x] Runtime stage uses a minimal base image (`python:3.11-slim`)
+- [x] Runtime stage copies only what is needed from the builder (no pip cache, no build tools)
+- [x] Container runs as a non-root user — `USER appuser` in Dockerfile
+- [x] `HEALTHCHECK` directive present in Dockerfile (`curl -f http://localhost:8000/health`)
+- [x] `EXPOSE` directive declares port 8000
 
 ### Image Size & Verification
-- [ ] `docker build -t modelserve-api .` completes without errors
-- [ ] `docker image ls modelserve-api` shows size under 800 MB
-- [ ] `docker run --rm modelserve-api whoami` outputs a non-root username
-- [ ] Container health check passes: `docker inspect <container> | grep Health`
+- [x] `docker build -t modelserve-api .` completes without errors
+- [ ] `docker image ls modelserve-api` shows size under 800 MB — **1.21 GB, cannot achieve** (see ADR-4)
+- [x] `docker run --rm modelserve-api whoami` → `appuser`
+- [x] Container health check passes: `docker inspect` → `healthy`
 
 ### Regression Check (Phase 2 still works)
-- [ ] `docker compose up` still starts all services cleanly using the new image
-- [ ] `curl http://localhost:8000/health` still returns 200
-- [ ] `curl -X POST http://localhost:8000/predict -d @training/sample_request.json` still returns valid prediction
+- [x] `docker compose up` still starts all services cleanly
+- [x] `curl http://localhost:8000/health` → 200
+- [x] `curl -X POST http://localhost:8000/predict -d @training/sample_request.json` → valid prediction
 
 ---
 
-## Manual flow test — run this yourself
+## Manual flow test
 
 ```bash
-# 1. Check image size
+# Image size
 docker build -t modelserve-api .
 docker image ls modelserve-api
 
-# 2. Confirm non-root user
-docker run --rm modelserve-api whoami
+# Non-root user
+docker run --rm --entrypoint=sh modelserve-api -c "whoami"
+# → appuser
 
-# 3. Full stack still works
+# Health check
 docker compose up -d
 curl http://localhost:8000/health
 curl -X POST http://localhost:8000/predict \
@@ -57,25 +58,19 @@ curl -X POST http://localhost:8000/predict \
   -d @training/sample_request.json
 ```
 
-All pass? → **Commit and push:**
-```bash
-git add Dockerfile
-git commit -m "feat: multi-stage Dockerfile with non-root user and healthcheck"
-git push
-```
-
 ---
 
-## Capture decisions now (feeds ADR-4)
+## Decisions captured → `docs/ARCHITECTURE.md`
 
-Before finishing this session, jot these down in `docs/ARCHITECTURE.md`:
-
-- [ ] Which base image did you choose for the runtime stage and why?
-- [ ] What did the multi-stage build actually cut from the final image (size before vs after)?
-- [ ] Any trade-offs you accepted (e.g. Alpine vs slim, specific Python version)?
+- [x] ADR-4: Base image choice — `python:3.11-slim` (not Alpine — musl libc breaks pre-built wheels)
+- [x] ADR-4: Multi-stage cut — gcc, libpq-dev, pip cache absent from final image (verified)
+- [x] ADR-4: Size trade-off — 1.21 GB is the practical floor; scipy+dask+pyarrow are mandatory runtime deps of sklearn+feast
 
 ---
 
 ## Notes
 
-<!-- Add any blockers, decisions made, or deviations from the plan here -->
+- 800 MB target not achievable: `sklearn` requires `scipy` at import; `feast` requires `dask` and `pyarrow` at import. These three add ~293 MB that cannot be surgically removed.
+- Removed from serving image vs training: `boto3`, `psycopg2-binary`, `matplotlib`, `pandas`, full `mlflow` → `mlflow-skinny`, `mypy`/`bigtree`/`mypyc` (feast bundles these for static analysis only)
+- pandas removed from serving path entirely — `feature_client.py` now returns `(np.ndarray, dict)` instead of a DataFrame; sklearn accepts numpy arrays natively
+- gunicorn home-dir permission issue fixed: `mkdir -p /home/appuser && chown appuser:appuser /home/appuser`

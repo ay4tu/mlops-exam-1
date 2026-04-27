@@ -55,15 +55,16 @@ def health():
 def predict(req: PredictRequest):
     prediction_requests_total.inc()
     with prediction_duration_seconds.time():
-        features = feature_client.get_features(req.entity_id)
-        if features is None:
+        result = feature_client.get_features(req.entity_id)
+        if result is None:
             prediction_errors_total.inc()
             raise HTTPException(
                 status_code=404,
                 detail={"error": "entity_not_found", "entity_id": req.entity_id},
             )
         try:
-            prob = model_loader.predict_proba(features)
+            features_arr, _ = result
+            prob = model_loader.predict_proba(features_arr)
             pred = int(prob > 0.5)
         except Exception as e:
             prediction_errors_total.inc()
@@ -82,15 +83,16 @@ def predict(req: PredictRequest):
 def predict_explain(entity_id: int, explain: bool = False):
     prediction_requests_total.inc()
     with prediction_duration_seconds.time():
-        features = feature_client.get_features(entity_id)
-        if features is None:
+        result = feature_client.get_features(entity_id)
+        if result is None:
             prediction_errors_total.inc()
             raise HTTPException(
                 status_code=404,
                 detail={"error": "entity_not_found", "entity_id": entity_id},
             )
         try:
-            prob = model_loader.predict_proba(features)
+            features_arr, features_dict = result
+            prob = model_loader.predict_proba(features_arr)
             pred = int(prob > 0.5)
         except Exception as e:
             prediction_errors_total.inc()
@@ -102,7 +104,7 @@ def predict_explain(entity_id: int, explain: bool = False):
         probability=prob,
         model_version=model_loader.get_model_version(),
         timestamp=datetime.now(timezone.utc).isoformat(),
-        features=features.iloc[0].to_dict() if explain else {},
+        features=features_dict if explain else {},
     )
 
 
