@@ -1,0 +1,20 @@
+# FastAPI serving container — only what the inference service needs
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+gunicorn>=21.0.0
+pydantic>=2.4.0
+pyyaml>=6.0
+
+# Model loading — skinny client: no UI, no backend stores, no scipy/matplotlib
+mlflow-skinny>=2.10.0
+
+# Inference
+scikit-learn>=1.8.0
+pandas>=2.0.0
+numpy>=2.0.0
+
+# Feature store online reads
+feast[redis]>=0.35.0
+
+# Observability
+prometheus-client>=0.18.0
