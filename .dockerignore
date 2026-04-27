@@ -1,0 +1,17 @@
+data/
+*.csv
+training/features.parquet
+training/sample_request.json
+.env
+.env.*
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.git/
+*.md
+plans/
+planing-and-sessions/
+infrastructure/
+monitoring/
+docs/

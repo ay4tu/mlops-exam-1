@@ -52,6 +52,42 @@ services:
       retries: 10
       start_period: 30s
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  fastapi:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MODEL_NAME: ${MODEL_NAME:-fraud-detector}
+      MODEL_STAGE: ${MODEL_STAGE:-Production}
+    volumes:
+      - ./feast_repo:/app/feast_repo
+      - ./training:/app/training
+      - ./scripts:/app/scripts
+    depends_on:
+      mlflow:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
 volumes:
   postgres_data:
   mlruns:
