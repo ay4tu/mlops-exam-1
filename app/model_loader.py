@@ -32,6 +32,6 @@ def get_model_version() -> str:
     return _model_version
 
 
-def predict_proba(features_df) -> float:
-    proba = _model.predict_proba(features_df)[:, 1]
+def predict_proba(features) -> float:
+    proba = _model.predict_proba(features)[:, 1]
     return float(proba[0])

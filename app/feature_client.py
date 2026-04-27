@@ -2,8 +2,9 @@ import logging
 import os
 import tempfile
 from pathlib import Path
+from typing import Optional
 
-import pandas as pd
+import numpy as np
 import yaml
 
 from app.metrics import feast_online_store_hits_total, feast_online_store_misses_total
@@ -60,7 +61,7 @@ def load_store():
         tmp_path.unlink(missing_ok=True)
 
 
-def get_features(entity_id: int) -> pd.DataFrame | None:
+def get_features(entity_id: int) -> Optional[tuple[np.ndarray, dict]]:
     try:
         response = _store.get_online_features(
             features=FEATURE_REFS,
@@ -75,7 +76,8 @@ def get_features(entity_id: int) -> pd.DataFrame | None:
 
         feast_online_store_hits_total.inc()
         row = {k: v[0] for k, v in response.items() if k != "cc_num"}
-        return pd.DataFrame([row])[FEATURE_COLS]
+        arr = np.array([[row[col] for col in FEATURE_COLS]], dtype=np.float64)
+        return arr, row
 
     except Exception as e:
         feast_online_store_misses_total.inc()

@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 import pytest
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
@@ -10,7 +9,10 @@ FEATURE_COLS = [
     "lat", "long", "merch_lat", "merch_long", "distance",
     "hour", "day_of_week", "age",
 ]
-MOCK_FEATURES = pd.DataFrame([{col: 1.0 for col in FEATURE_COLS}])
+MOCK_FEATURES = (
+    np.array([[1.0] * len(FEATURE_COLS)]),
+    {col: 1.0 for col in FEATURE_COLS},
+)
 
 
 def _make_mock_sklearn():
