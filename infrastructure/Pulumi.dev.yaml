@@ -1,0 +1,2 @@
+config:
+  modelserve:github_repo: https://github.com/ay4tu/mlops-exam-1
