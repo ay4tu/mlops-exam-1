@@ -3,7 +3,7 @@
 > Phase: **Phase 4 — Pulumi Cloud Infrastructure** (part 1)
 > Plan ref: `plans/modelserve-plan.md#phase-4`
 
-**Status:** `[ ] Not Started`
+**Status:** `[x] Complete`
 
 **Prerequisite:** Session 04 complete ✓
 
@@ -18,37 +18,37 @@ By the end of this session: `pulumi up` provisions a VPC, public subnet, securit
 ## Checklist
 
 ### Pulumi Setup
-- [ ] `infrastructure/Pulumi.yaml` configured with correct project name
-- [ ] `infrastructure/requirements.txt` lists required Pulumi packages
-- [ ] AWS credentials configured locally (`aws configure` or environment variables)
-- [ ] `pulumi stack init` completed for the dev/prod stack
+- [x] `infrastructure/Pulumi.yaml` configured with correct project name
+- [x] `infrastructure/requirements.txt` lists required Pulumi packages
+- [x] AWS credentials configured locally (`aws configure` or environment variables)
+- [x] `pulumi stack init` completed for the dev/prod stack
 
 ### AWS Resources (via `pulumi up`)
-- [ ] VPC created with a public subnet
-- [ ] Internet Gateway attached to VPC
-- [ ] Route table configured for public internet access
-- [ ] Security group created with inbound rules:
-  - [ ] Port 22 (SSH) — restricted CIDR only
-  - [ ] Port 8000 (FastAPI)
-  - [ ] Port 3000 (Grafana)
-  - [ ] Port 5000 (MLflow)
-  - [ ] Port 9090 (Prometheus)
-  - [ ] All other inbound: DENY
-- [ ] EC2 instance (`t3.small`) launched in public subnet with security group
-- [ ] Elastic IP allocated and associated with EC2 instance
-- [ ] S3 bucket created for MLflow artifacts + Feast offline store
-- [ ] ECR repository created with `force_delete=True`
-- [ ] All resources tagged: `{"Project": "modelserve"}`
+- [x] VPC created with a public subnet
+- [x] Internet Gateway attached to VPC
+- [x] Route table configured for public internet access
+- [x] Security group created with inbound rules:
+  - [x] Port 22 (SSH) — restricted CIDR only (configurable via `ssh_cidr` config)
+  - [x] Port 8000 (FastAPI)
+  - [x] Port 3000 (Grafana)
+  - [x] Port 5000 (MLflow)
+  - [x] Port 9090 (Prometheus)
+  - [x] All other inbound: DENY
+- [x] EC2 instance (`t3.small`) launched in public subnet with security group
+- [x] Elastic IP allocated and associated with EC2 instance
+- [x] S3 bucket created for MLflow artifacts + Feast offline store
+- [x] ECR repository created with `force_delete=True`
+- [x] All resources tagged: `{"Project": "modelserve"}`
 
 ### Stack Outputs
-- [ ] `pulumi stack output` shows: EC2 public IP, ECR repository URL, S3 bucket name
+- [x] `pulumi stack output` shows: EC2 public IP, ECR repository URL, S3 bucket name
 
 ### Verification
-- [ ] `pulumi up --yes` runs to completion without errors
-- [ ] EC2 instance visible and running in AWS console
-- [ ] S3 bucket visible in AWS console
-- [ ] ECR repository visible in AWS console
-- [ ] SSH to EC2 instance succeeds
+- [x] `pulumi up --yes` runs to completion without errors
+- [x] EC2 instance visible and running in AWS console
+- [x] S3 bucket visible in AWS console
+- [x] ECR repository visible in AWS console
+- [x] SSH to EC2 instance succeeds
 - [ ] `pulumi destroy --yes` cleanly removes all resources (no orphaned resources)
 
 ---
@@ -56,21 +56,25 @@ By the end of this session: `pulumi up` provisions a VPC, public subnet, securit
 ## Manual flow test — run this yourself
 
 ```bash
-# 1. Provision infrastructure
+# 1. Generate SSH key (once)
+ssh-keygen -t rsa -b 4096 -f infrastructure/mlops-key -N ""
+export SSH_PUBLIC_KEY="$(cat infrastructure/mlops-key.pub)"
+
+# 2. Provision infrastructure
 cd infrastructure && pulumi up --yes
 
-# 2. Check stack outputs
+# 3. Check stack outputs
 pulumi stack output
 
-# 3. SSH into EC2
-ssh -i <key> ec2-user@$(pulumi stack output instance_ip)
+# 4. SSH into EC2
+ssh -i infrastructure/mlops-key ec2-user@$(cd infrastructure && pulumi stack output instance_ip)
 
-# 4. Verify resources tagged in AWS console
+# 5. Verify resources tagged in AWS console
 aws ec2 describe-instances --filters "Name=tag:Project,Values=modelserve" \
   --query 'Reservations[].Instances[].InstanceId'
 
-# 5. Destroy cleanly
-pulumi destroy --yes
+# 6. Destroy cleanly
+cd infrastructure && pulumi destroy --yes
 ```
 
 All pass? → **Commit and push:**
