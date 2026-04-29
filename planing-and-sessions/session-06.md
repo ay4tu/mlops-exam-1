@@ -3,7 +3,7 @@
 > Phase: **Phase 4 — Pulumi Cloud Infrastructure** (part 2)
 > Plan ref: `plans/modelserve-plan.md#phase-4`
 
-**Status:** `[ ] Not Started`
+**Status:** `[~] In Progress — code written, deploy steps remain`
 
 **Prerequisite:** Session 05 complete ✓
 
@@ -18,15 +18,15 @@ By the end of this session: the full ModelServe stack (FastAPI, MLflow, Feast, R
 ## Checklist
 
 ### EC2 Bootstrap Script
-- [ ] User-data script installs Docker and Docker Compose on EC2 instance
-- [ ] User-data script pulls the repository from GitHub on first boot
-- [ ] User-data script runs `docker compose up -d` automatically
+- [x] User-data script installs Docker and Docker Compose on EC2 instance
+- [x] User-data script pulls the repository from GitHub on first boot
+- [x] User-data script runs `docker compose up -d` automatically
 - [ ] Bootstrap completes in under 10 minutes (demo constraint)
-- [ ] Script is idempotent (safe to re-run)
+- [x] Script is idempotent (safe to re-run)
 
 ### MLflow Artifact Store (S3)
-- [ ] EC2 IAM role has read/write access to the S3 bucket
-- [ ] `docker-compose.yml` production variant configures MLflow to use S3 artifact store
+- [x] EC2 IAM role has read/write access to the S3 bucket
+- [x] `docker-compose.prod.yml` configures MLflow to use S3 artifact store
 - [ ] MLflow can store and retrieve artifacts from S3 (verify by re-running `train.py` or pushing an existing model artifact)
 
 ### ECR Image Push
@@ -50,24 +50,30 @@ By the end of this session: the full ModelServe stack (FastAPI, MLflow, Feast, R
 ## Manual flow test — run this yourself
 
 ```bash
-# Replace <ip> with your Elastic IP from: pulumi stack output instance_ip
+# 1. Set your GitHub repo URL and redeploy (replaces EC2 with bootstrap)
+cd infrastructure
+pulumi config set github_repo https://github.com/<user>/<repo>
+export SSH_PUBLIC_KEY="$(cat mlops-key.pub)"
+pulumi up --yes
 
-# 1. Health check from your local machine
-curl http://<ip>:8000/health
+# 2. Push FastAPI image to ECR (from project root)
+cd ..
+./scripts/push-to-ecr.sh
 
-# 2. Prediction from your local machine
-curl -X POST http://<ip>:8000/predict \
+# 3. Get the Elastic IP
+IP=$(cd infrastructure && pulumi stack output instance_ip)
+
+# 4. Wait for bootstrap (~5 min), then check services
+curl http://$IP:8000/health
+curl -X POST http://$IP:8000/predict \
   -H "Content-Type: application/json" \
   -d @training/sample_request.json
+open http://$IP:5000   # MLflow
+open http://$IP:3000   # Grafana
+open http://$IP:9090/targets  # Prometheus
 
-# 3. MLflow UI
-open http://<ip>:5000
-
-# 4. Grafana dashboard
-open http://<ip>:3000
-
-# 5. Prometheus targets
-open http://<ip>:9090/targets
+# 5. Monitor bootstrap log via SSH
+ssh -i infrastructure/mlops-key ec2-user@$IP "tail -f /var/log/bootstrap.log"
 ```
 
 All pass? → **Commit and push:**
