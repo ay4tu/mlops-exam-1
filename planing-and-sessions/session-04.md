@@ -3,7 +3,7 @@
 > Phase: **Phase 3 — Containerisation & Observability** (part 2)
 > Plan ref: `plans/modelserve-plan.md#phase-3`
 
-**Status:** `[ ] Not Started`
+**Status:** `[x] Complete`
 
 **Prerequisite:** Session 03 complete ✓
 
@@ -18,35 +18,35 @@ By the end of this session: Prometheus scrapes FastAPI metrics, Grafana loads a 
 ## Checklist
 
 ### Prometheus
-- [ ] `monitoring/prometheus/prometheus.yml` scrape config targets FastAPI on port 8000
-- [ ] `monitoring/prometheus/alerts.yml` defines at least 3 alert rules:
-  - [ ] High latency (p95 > threshold)
-  - [ ] High error rate
-  - [ ] Service down (FastAPI unreachable)
-- [ ] Prometheus added to `docker-compose.yml` with correct volume mounts
-- [ ] Prometheus UI at `http://localhost:9090` shows FastAPI target as `UP`
-- [ ] All three alert rules visible at `http://localhost:9090/alerts`
+- [x] `monitoring/prometheus/prometheus.yml` scrape config targets FastAPI on port 8000
+- [x] `monitoring/prometheus/alerts.yml` defines at least 3 alert rules:
+  - [x] High latency (p95 > threshold)
+  - [x] High error rate
+  - [x] Service down (FastAPI unreachable)
+- [x] Prometheus added to `docker-compose.yml` with correct volume mounts
+- [x] Prometheus UI at `http://localhost:9090` shows FastAPI target as `UP`
+- [x] All three alert rules visible at `http://localhost:9090/alerts`
 
 ### Grafana
-- [ ] `monitoring/grafana/provisioning/datasources/prometheus.yml` configures Prometheus as datasource
-- [ ] `monitoring/grafana/provisioning/dashboards/dashboard.yml` points to dashboard JSON directory
-- [ ] `monitoring/grafana/dashboards/modelserve-overview.json` contains the dashboard definition
-- [ ] Grafana added to `docker-compose.yml` with provisioning volumes mounted
-- [ ] Grafana at `http://localhost:3000` loads dashboard automatically (no manual setup)
-- [ ] Dashboard panels present and showing data after 10+ requests:
-  - [ ] Prediction latency p50
-  - [ ] Prediction latency p95
-  - [ ] Prediction latency p99
-  - [ ] Request rate
-  - [ ] Error rate
-  - [ ] Model version
-  - [ ] Feast hit/miss ratio
+- [x] `monitoring/grafana/provisioning/datasources/prometheus.yml` configures Prometheus as datasource
+- [x] `monitoring/grafana/provisioning/dashboards/dashboard.yml` points to dashboard JSON directory
+- [x] `monitoring/grafana/dashboards/modelserve-overview.json` contains the dashboard definition
+- [x] Grafana added to `docker-compose.yml` with provisioning volumes mounted
+- [x] Grafana at `http://localhost:3000` loads dashboard automatically (no manual setup)
+- [x] Dashboard panels present and showing data after 10+ requests:
+  - [x] Prediction latency p50
+  - [x] Prediction latency p95
+  - [x] Prediction latency p99
+  - [x] Request rate
+  - [x] Error rate
+  - [x] Model version
+  - [x] Feast hit/miss ratio
 
 ### End-to-End Verification
-- [ ] `docker compose up` (fresh) brings up full stack including Prometheus and Grafana
-- [ ] Send 20+ requests to `/predict` and verify all dashboard panels update live
-- [ ] Kill the FastAPI container — verify the service-down alert fires within expected time
-- [ ] Restart FastAPI — verify alert clears
+- [x] `docker compose up` (fresh) brings up full stack including Prometheus and Grafana
+- [x] Send 20+ requests to `/predict` and verify all dashboard panels update live
+- [x] Kill the FastAPI container — verify the service-down alert fires within expected time
+- [x] Restart FastAPI — verify alert clears
 
 ---
 
@@ -98,4 +98,7 @@ Before finishing this session, jot these down in `docs/ARCHITECTURE.md`:
 
 ## Notes
 
-<!-- Add any blockers, decisions made, or deviations from the plan here -->
+- Alert thresholds: p95 latency > 500ms (5 min window), error rate > 5% (2 min window), FastAPI down for 1 min
+- FastAPIDown alert goes Pending (yellow) immediately on container stop, turns Firing (red) after 1 minute
+- Grafana provisioned from files — datasource and dashboard load automatically on `docker compose up`, no manual UI steps
+- Dashboard panels: latency p50/p95/p99, request rate, error rate, Feast hit/miss ratio, model version
