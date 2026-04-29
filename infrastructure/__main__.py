@@ -8,6 +8,7 @@ import pulumi_aws as aws
 config = pulumi.Config()
 ssh_cidr = config.get("ssh_cidr") or "0.0.0.0/0"
 ssh_public_key = os.environ.get("SSH_PUBLIC_KEY", "")
+github_repo = config.get("github_repo") or ""
 
 region = aws.get_region().region
 
@@ -176,39 +177,6 @@ ami = aws.ec2.get_ami(
     ],
 )
 
-# ── User Data (install Docker + Docker Compose) ───────────────────────────────
-user_data = """#!/bin/bash
-set -e
-yum update -y
-amazon-linux-extras install docker -y
-systemctl enable docker
-systemctl start docker
-usermod -aG docker ec2-user
-curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \
-  -o /usr/local/bin/docker-compose
-chmod +x /usr/local/bin/docker-compose
-"""
-
-# ── EC2 Instance ─────────────────────────────────────────────────────────────
-instance = aws.ec2.Instance(
-    "modelserve-ec2",
-    ami=ami.id,
-    instance_type="t3.medium",
-    subnet_id=subnet.id,
-    vpc_security_group_ids=[sg.id],
-    key_name=key_pair.key_name if key_pair else None,
-    user_data=user_data,
-    tags={**tags, "Name": "modelserve-ec2"},
-)
-
-# ── Elastic IP ───────────────────────────────────────────────────────────────
-eip = aws.ec2.Eip(
-    "modelserve-eip",
-    instance=instance.id,
-    domain="vpc",
-    tags={**tags, "Name": "modelserve-eip"},
-)
-
 # ── S3 Bucket (MLflow artifacts + Feast offline store) ───────────────────────
 s3_bucket = aws.s3.Bucket(
     "modelserve-artifacts",
@@ -222,6 +190,87 @@ ecr_repo = aws.ecr.Repository(
     name="modelserve-app",
     force_delete=True,
     tags=tags,
+)
+
+# ── User Data ────────────────────────────────────────────────────────────────
+def _make_user_data(ecr_url: str, s3_bucket_name: str) -> str:
+    return f"""#!/bin/bash
+set -e
+exec > /var/log/bootstrap.log 2>&1
+
+ECR_URL="{ecr_url}"
+S3_BUCKET="{s3_bucket_name}"
+REGION="{region}"
+GITHUB_REPO="{github_repo}"
+
+# ── Docker ────────────────────────────────────────────────────────────────
+yum update -y
+amazon-linux-extras install docker -y
+systemctl enable docker
+systemctl start docker
+usermod -aG docker ec2-user
+
+# ── Docker Compose ────────────────────────────────────────────────────────
+curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \\
+  -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
+
+# ── Git ───────────────────────────────────────────────────────────────────
+yum install -y git
+
+[ -z "$GITHUB_REPO" ] && {{ echo "No GITHUB_REPO set, skipping clone"; exit 0; }}
+
+# ── Clone repo (idempotent) ───────────────────────────────────────────────
+if [ ! -d /home/ec2-user/app ]; then
+  git clone "$GITHUB_REPO" /home/ec2-user/app
+fi
+chown -R ec2-user:ec2-user /home/ec2-user/app
+
+# ── Write .env ────────────────────────────────────────────────────────────
+cat > /home/ec2-user/app/.env <<'ENVEOF'
+POSTGRES_USER=mlflow
+POSTGRES_PASSWORD=mlflow
+POSTGRES_DB=mlflow
+MODEL_NAME=fraud-detector
+MODEL_STAGE=Production
+ENVEOF
+printf 'MLFLOW_S3_BUCKET=%s\\n' "$S3_BUCKET"       >> /home/ec2-user/app/.env
+printf 'AWS_DEFAULT_REGION=%s\\n' "$REGION"         >> /home/ec2-user/app/.env
+printf 'FASTAPI_IMAGE=%s:latest\\n' "$ECR_URL"      >> /home/ec2-user/app/.env
+
+# ── ECR login + pull FastAPI image ────────────────────────────────────────
+aws ecr get-login-password --region "$REGION" | \\
+  docker login --username AWS --password-stdin "$ECR_URL"
+docker pull "$ECR_URL:latest" || true
+
+# ── Start stack ───────────────────────────────────────────────────────────
+cd /home/ec2-user/app
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+"""
+
+user_data = pulumi.Output.all(ecr_repo.repository_url, s3_bucket.bucket).apply(
+    lambda args: _make_user_data(args[0], args[1])
+)
+
+# ── EC2 Instance ─────────────────────────────────────────────────────────────
+instance = aws.ec2.Instance(
+    "modelserve-ec2",
+    ami=ami.id,
+    instance_type="t3.medium",
+    subnet_id=subnet.id,
+    vpc_security_group_ids=[sg.id],
+    key_name=key_pair.key_name if key_pair else None,
+    iam_instance_profile=instance_profile.name,
+    user_data=user_data,
+    tags={**tags, "Name": "modelserve-ec2"},
+)
+
+# ── Elastic IP ───────────────────────────────────────────────────────────────
+eip = aws.ec2.Eip(
+    "modelserve-eip",
+    instance=instance.id,
+    domain="vpc",
+    tags={**tags, "Name": "modelserve-eip"},
 )
 
 # ── Stack Outputs ─────────────────────────────────────────────────────────────
