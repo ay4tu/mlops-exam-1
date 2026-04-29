@@ -78,6 +78,58 @@ open http://localhost:5001          # MLflow UI
 
 ---
 
+## AWS Infrastructure (Session 05)
+
+Provisions a complete AWS environment via Pulumi: VPC, public subnet, Internet Gateway, security group, EC2 (`t3.medium`), Elastic IP, S3 bucket, and ECR repository — all tagged `Project: modelserve`.
+
+### Prerequisites
+
+- [Pulumi CLI](https://www.pulumi.com/docs/install/) installed
+- AWS credentials configured (`aws configure` or environment variables)
+- Python 3.11+ with `venv`
+
+### Deploy
+
+```bash
+# 1. Generate SSH key (once)
+ssh-keygen -t rsa -b 4096 -f infrastructure/mlops-key -N ""
+export SSH_PUBLIC_KEY="$(cat infrastructure/mlops-key.pub)"
+
+# 2. Install Pulumi dependencies
+cd infrastructure
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
+
+# 3. Configure stack
+pulumi stack init dev
+pulumi config set aws:region ap-southeast-1   # or your region
+
+# 4. Deploy
+pulumi up --yes
+```
+
+### SSH into EC2
+
+```bash
+ssh -i infrastructure/mlops-key ec2-user@$(cd infrastructure && pulumi stack output instance_ip)
+```
+
+### Stack outputs
+
+| Output | Description |
+|--------|-------------|
+| `instance_ip` | Elastic IP of the EC2 instance |
+| `ecr_repository_url` | ECR repository URL for Docker image pushes |
+| `s3_bucket_name` | S3 bucket for MLflow artifacts and Feast offline store |
+
+### Tear down
+
+```bash
+cd infrastructure && pulumi destroy --yes
+```
+
+---
+
 ## REST Endpoints
 
 | Method | Path | Description | Example response |
