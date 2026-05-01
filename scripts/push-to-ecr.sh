@@ -16,7 +16,7 @@ aws ecr get-login-password --region "$REGION" | \
   docker login --username AWS --password-stdin "$ECR_URL"
 
 echo "Building image..."
-docker build -t "$ECR_URL:$TAG" .
+docker build --platform linux/amd64 -t "$ECR_URL:$TAG" .
 
 echo "Pushing $ECR_URL:$TAG ..."
 docker push "$ECR_URL:$TAG"

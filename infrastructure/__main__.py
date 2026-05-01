@@ -1,18 +1,42 @@
+import hashlib
 import json
 import os
+from pathlib import Path
 
 import pulumi
 import pulumi_aws as aws
+import pulumi_command as command
 
 # ── Config ──────────────────────────────────────────────────────────────────
 config = pulumi.Config()
 ssh_cidr = config.get("ssh_cidr") or "0.0.0.0/0"
-ssh_public_key = os.environ.get("SSH_PUBLIC_KEY", "")
 github_repo = config.get("github_repo") or ""
 
 region = aws.get_region().region
-
 tags = {"Project": "modelserve"}
+
+# SSH public key: read from committed key file, fallback to env var
+_key_pub = Path(__file__).parent / "mlops-key.pub"
+ssh_public_key = _key_pub.read_text().strip() if _key_pub.exists() else os.environ.get("SSH_PUBLIC_KEY", "")
+
+# Hash app source files — triggers image rebuild only when code changes
+def _source_hash() -> str:
+    root = Path(__file__).parent.parent
+    h = hashlib.md5()
+    for rel in ("Dockerfile", "requirements-app.txt"):
+        p = root / rel
+        if p.exists():
+            h.update(p.read_bytes())
+    app_dir = root / "app"
+    if app_dir.exists():
+        for f in sorted(app_dir.rglob("*")):
+            if f.is_file():
+                h.update(f.read_bytes())
+    return h.hexdigest()
+
+source_hash = _source_hash()
+project_root = str(Path(__file__).parent.parent)
+ssh_key_path = str(Path(__file__).parent / "mlops-key")
 
 # ── VPC ──────────────────────────────────────────────────────────────────────
 vpc = aws.ec2.Vpc(
@@ -168,16 +192,16 @@ instance_profile = aws.iam.InstanceProfile(
     role=ec2_role.name,
 )
 
-# ── AMI (Amazon Linux 2) ─────────────────────────────────────────────────────
+# ── AMI (Amazon Linux 2023) ──────────────────────────────────────────────────
 ami = aws.ec2.get_ami(
     most_recent=True,
     owners=["amazon"],
     filters=[
-        aws.ec2.GetAmiFilterArgs(name="name", values=["amzn2-ami-hvm-*-x86_64-gp2"]),
+        aws.ec2.GetAmiFilterArgs(name="name", values=["al2023-ami-*-x86_64"]),
     ],
 )
 
-# ── S3 Bucket (MLflow artifacts + Feast offline store) ───────────────────────
+# ── S3 Bucket (MLflow artifacts) ─────────────────────────────────────────────
 s3_bucket = aws.s3.Bucket(
     "modelserve-artifacts",
     force_destroy=True,
@@ -192,7 +216,22 @@ ecr_repo = aws.ecr.Repository(
     tags=tags,
 )
 
-# ── User Data ────────────────────────────────────────────────────────────────
+# ── local.Command: build + push amd64 image ──────────────────────────────────
+# Re-runs only when Dockerfile / app code / requirements change.
+build_and_push = command.local.Command(
+    "build-and-push",
+    create=pulumi.Output.concat(
+        "cd ", project_root,
+        " && aws ecr get-login-password --region ", region,
+        " | docker login --username AWS --password-stdin ", ecr_repo.repository_url,
+        " && docker build --platform linux/amd64 -t ", ecr_repo.repository_url, ":latest .",
+        " && docker push ", ecr_repo.repository_url, ":latest",
+    ),
+    triggers=[source_hash],
+    opts=pulumi.ResourceOptions(depends_on=[ecr_repo]),
+)
+
+# ── User Data (Amazon Linux 2023) ─────────────────────────────────────────────
 def _make_user_data(ecr_url: str, s3_bucket_name: str) -> str:
     return f"""#!/bin/bash
 set -e
@@ -204,8 +243,7 @@ REGION="{region}"
 GITHUB_REPO="{github_repo}"
 
 # ── Docker ────────────────────────────────────────────────────────────────
-yum update -y
-amazon-linux-extras install docker -y
+dnf install -y docker git
 systemctl enable docker
 systemctl start docker
 usermod -aG docker ec2-user
@@ -215,12 +253,9 @@ curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-co
   -o /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
 
-# ── Git ───────────────────────────────────────────────────────────────────
-yum install -y git
-
 [ -z "$GITHUB_REPO" ] && {{ echo "No GITHUB_REPO set, skipping clone"; exit 0; }}
 
-# ── Clone repo (idempotent) ───────────────────────────────────────────────
+# ── Clone repo ────────────────────────────────────────────────────────────
 if [ ! -d /home/ec2-user/app ]; then
   git clone "$GITHUB_REPO" /home/ec2-user/app
 fi
@@ -241,11 +276,12 @@ printf 'FASTAPI_IMAGE=%s:latest\\n' "$ECR_URL"      >> /home/ec2-user/app/.env
 # ── ECR login + pull FastAPI image ────────────────────────────────────────
 aws ecr get-login-password --region "$REGION" | \\
   docker login --username AWS --password-stdin "$ECR_URL"
-docker pull "$ECR_URL:latest" || true
+docker pull "$ECR_URL:latest"
 
-# ── Start stack ───────────────────────────────────────────────────────────
+# ── Start full stack ──────────────────────────────────────────────────────
+# FastAPI will restart until model is trained (restart: on-failure in compose).
 cd /home/ec2-user/app
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d || true
 """
 
 user_data = pulumi.Output.all(ecr_repo.repository_url, s3_bucket.bucket).apply(
@@ -262,6 +298,10 @@ instance = aws.ec2.Instance(
     key_name=key_pair.key_name if key_pair else None,
     iam_instance_profile=instance_profile.name,
     user_data=user_data,
+    root_block_device=aws.ec2.InstanceRootBlockDeviceArgs(
+        volume_size=30,
+        volume_type="gp3",
+    ),
     tags={**tags, "Name": "modelserve-ec2"},
 )
 
@@ -273,7 +313,7 @@ eip = aws.ec2.Eip(
     tags={**tags, "Name": "modelserve-eip"},
 )
 
-# ── Stack Outputs ─────────────────────────────────────────────────────────────
+# ── Outputs ───────────────────────────────────────────────────────────────────
 pulumi.export("instance_ip", eip.public_ip)
 pulumi.export("ecr_repository_url", ecr_repo.repository_url)
 pulumi.export("s3_bucket_name", s3_bucket.bucket)
