@@ -59,24 +59,53 @@ jobs:
             --query "Addresses[0].PublicIp" \
             --output text)
           echo "ip=$IP" >> $GITHUB_OUTPUT
-      - name: Pull and restart FastAPI
+      - name: Pull and restart stack
         run: |
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/key
           chmod 600 /tmp/key
           IP="${{ steps.ip.outputs.ip }}"
-          ssh -i /tmp/key -o StrictHostKeyChecking=no ec2-user@$IP \
-            "cd /home/ec2-user/app && \
-             ECR_HOST=\$(grep FASTAPI_IMAGE .env | cut -d= -f2 | cut -d/ -f1) && \
-             aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
-               docker login --username AWS --password-stdin \"\$ECR_HOST\" && \
-             docker-compose -f docker-compose.yml -f docker-compose.prod.yml pull fastapi && \
-             docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d fastapi"
+          ssh -i /tmp/key -o StrictHostKeyChecking=no ec2-user@$IP bash <<'EOF'
+            set -e
+            cd /home/ec2-user/app
+            git pull --ff-only
+            ECR_HOST=$(grep FASTAPI_IMAGE .env | cut -d= -f2 | cut -d/ -f1)
+            aws ecr get-login-password --region ap-southeast-1 | \
+              docker login --username AWS --password-stdin "$ECR_HOST"
+            docker-compose -f docker-compose.yml -f docker-compose.prod.yml pull fastapi
+            docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+          EOF
+      - name: Train model and materialize features
+        run: |
+          IP="${{ steps.ip.outputs.ip }}"
+          ssh -i /tmp/key -o StrictHostKeyChecking=no ec2-user@$IP bash <<'EOF'
+            set -e
+            cd /home/ec2-user/app
+            S3_BUCKET=$(grep MLFLOW_S3_BUCKET .env | cut -d= -f2)
+            ECR_URL=$(aws ecr describe-repositories \
+              --query 'repositories[0].repositoryUri' \
+              --output text --region ap-southeast-1)
+            mkdir -p data
+            aws s3 cp "s3://$S3_BUCKET/data/fraudTrain.csv" data/fraudTrain.csv
+            docker run --rm \
+              --network app_default \
+              -v /home/ec2-user/app/data:/app/data \
+              -v /home/ec2-user/app/training:/app/training \
+              -e MLFLOW_TRACKING_URI=http://mlflow:5000 \
+              "$ECR_URL:latest" python training/train.py
+            docker run --rm \
+              --network app_default \
+              -v /home/ec2-user/app/feast_repo:/app/feast_repo \
+              -v /home/ec2-user/app/training:/app/training \
+              -e REDIS_HOST=redis \
+              "$ECR_URL:latest" \
+              bash -c "cd /app/feast_repo && feast materialize-incremental $(date -u +%Y-%m-%dT%H:%M:%S)"
+          EOF
       - name: Verify health
         run: |
           IP="${{ steps.ip.outputs.ip }}"
-          for i in $(seq 1 12); do
+          for i in $(seq 1 24); do
             curl -sf "http://$IP:8000/health" && exit 0
-            sleep 5
+            sleep 10
           done
-          echo "Health check failed after 60s"
+          echo "Health check failed after 240s"
           exit 1
