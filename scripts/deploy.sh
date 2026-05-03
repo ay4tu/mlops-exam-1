@@ -28,13 +28,14 @@ ssh -i "$KEY" -o StrictHostKeyChecking=no ec2-user@"$IP" bash <<'REMOTE'
     --output text --region ap-southeast-1)
   aws ecr get-login-password --region ap-southeast-1 | \
     docker login --username AWS --password-stdin "$ECR_URL"
+  docker-compose -f docker-compose.yml -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
   docker-compose -f docker-compose.yml -f docker-compose.prod.yml pull
-  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
+  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
   echo "Stack restarted."
 REMOTE
 
 echo "==> [4/4] Register model + materialize features"
-./scripts/train-on-ec2.sh
+./scripts/seed-model.sh
 
 echo ""
 echo "Done. Endpoints:"
